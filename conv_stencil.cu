@@ -12,9 +12,10 @@ using namespace std;
 __global__ void baseline(real* input, real* output, real* K, int outh, int outw) {
     int i = threadIdx.x + blockDim.x*blockIdx.x;
     int j = threadIdx.y + blockDim.y*blockIdx.y;
+    output[i*outw+j] = 0;
     for (int ii = i; ii < i+S; ++ii) {
         for (int jj = j; jj < j+R; ++jj) {
-            output[i*outw+j] += input[ii*W+jj];
+            output[i*outw+j] += input[ii*W+jj] * K[(R-1-(jj-j))*S+(S-1-(ii-i))];
         }
     }
 }
