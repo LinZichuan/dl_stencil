@@ -45,7 +45,7 @@ void setup() {
     checkCUDNNError(cudnnSetFilter4dDescriptor(filter_desc_,
                     CUDNN_DATA_FLOAT, 1, 1, R, S));
     checkCUDNNError(cudnnSetConvolution2dDescriptor(conv_desc_,
-                    0, 0, 1, 1, 1, 1, CUDNN_CROSS_CORRELATION));
+                    0, 0, 1, 1, 1, 1, CUDNN_CONVOLUTION));
 
     checkCUDNNError(cudnnGetConvolutionForwardAlgorithm(cudnnHandle,
                     bottom_desc_, filter_desc_, conv_desc_, top_desc_,
@@ -167,13 +167,13 @@ int main() {
         }
     }
     cpu_comp(host_input, cpu_output, host_k, H, W, R, S, outh, outw);
-    printf("cpu result:\n");
-    for (int i = 0; i < outh; ++i) {
-        for (int j = 0; j < outw; ++j) {
-            printf("%f ", cpu_output[i*outw+j]);
-        }
-        printf("\n");
-    }
+    /*printf("cpu result:\n");*/
+    /*for (int i = 0; i < outh; ++i) {*/
+        /*for (int j = 0; j < outw; ++j) {*/
+            /*printf("%f ", cpu_output[i*outw+j]);*/
+        /*}*/
+        /*printf("\n");*/
+    /*}*/
     printf("start...\n");
     printf("---------------------\n");
     real *dev_input, *dev_output, *dev_k;
@@ -213,27 +213,26 @@ int main() {
     /*check(cpu_output, host_output, outh*outw);*/
     /*printf("---------------------\n");*/
     //recover dev_output[0] to 0
-    host_output[0] = 0;
+    for (int i = 0; i < H*W; ++i) {
+        host_output[i] = 0;
+    }
     cudaMemcpy(dev_output, host_output, outsize, cudaMemcpyHostToDevice);
     //cudnn
     cudaEventRecord(start, 0);
     checkCUDNNError(cudnnConvolutionForward(cudnnHandle, &alpha, bottom_desc_,
-                (void*)dev_input, filter_desc_, (void*)dev_k,
+                dev_input, filter_desc_, dev_k,
                 conv_desc_, algo_, workspace, workspaceSizeInBytes, &beta,
-                top_desc_, (void*)dev_output));
+                top_desc_, dev_output));
     cudaEventRecord(stop, 0);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&time, start, stop);
     printf("cudnn: time = %fms \n", time);
     cudaMemcpy(host_output, dev_output, outsize, cudaMemcpyDeviceToHost);
-    check(cpu_output, host_output, outh*outw);
-    printf("cudnn result:\n");
-    for (int i = 0; i < outh; ++i) {
-        for (int j = 0; j < outw; ++j) {
-            printf("%f ", host_output[i*outw+j]);
-        }
-        printf("\n");
-    }
+    cpu_comp(host_input, cpu_output, host_k, H, W, R, S, outh, outw);
+    if (check(cpu_output, host_output, outh*outw)) 
+        printf("cudnn correct!\n");
+    else
+        printf("cudnn error!\n");
     printf("---------------------\n");
 
     return 0;
