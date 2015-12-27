@@ -60,12 +60,15 @@ __global__ void baseline(real* input, real* output, real* K, int outh, int outw)
     int i = threadIdx.x + blockDim.x*blockIdx.x;
     int j = threadIdx.y + blockDim.y*blockIdx.y;
     float tmp = 0;
-    for (int a = 0; a < R; ++a) {
-        for (int b = 0; b < S; ++b) {
-            tmp += input[(j+a)*W + (i+b)] * K[(R-1-a)*S + (S-1-b)];
+    //注意边界thread的判断！！！
+    if (i < W-S+1 && j < H-R+1) { 
+        for (int a = 0; a < R; ++a) {
+            for (int b = 0; b < S; ++b) {
+                tmp += input[(j+a)*W + (i+b)] * K[(R-1-a)*S + (S-1-b)];
+            }
         }
+        output[j*outw+i] = tmp;
     }
-    output[j*outw+i] = tmp;
 }
 
 //fixed on 3*3
@@ -129,8 +132,8 @@ void cpu_comp(real* input, real* output, real* K, int h, int w, int kr, int ks, 
 }
 bool check(real* A, real* B, int size) {
     for (int i = 0; i < size; ++i)
-        if (int(A[i]) != int(B[i])) {
-            printf("ERROR at %d: %d %d\n", i, int(A[i]), int(B[i]));
+        if (A[i] != B[i]) {
+            printf("ERROR at %d: %d %d\n", i, A[i], B[i]);
             return false;
         }
     return true;
@@ -172,6 +175,7 @@ int main() {
         printf("\n");
     }
     printf("start...\n");
+    printf("---------------------\n");
     real *dev_input, *dev_output, *dev_k;
     cudaMalloc(&dev_input, insize);
     cudaMalloc(&dev_output, outsize);
@@ -180,7 +184,6 @@ int main() {
     cudaMemcpy(dev_k, host_k, ksize, cudaMemcpyHostToDevice);
     dim3 threadPerBlock(BX, BY);
     dim3 blockPerGrid((outw+BX-1)/BX, (outh+BY-1)/BY);
-
     //init
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
@@ -188,42 +191,32 @@ int main() {
     float time;
     //baseline
     cudaEventRecord(start, 0);
-    //for (int i = 0; i < 1000; ++i)
     baseline<<<blockPerGrid, threadPerBlock>>>(dev_input, dev_output, dev_k, outh, outw);
     cudaEventRecord(stop, 0);
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&time, start, stop);
     printf("baseline: time = %fms \n", time);
     cudaMemcpy(host_baseline_output, dev_output, outsize, cudaMemcpyDeviceToHost);
-    printf("baseline result:\n");
-    for (int i = 0; i < outh; ++i) {
-        for (int j = 0; j < outw; ++j) {
-            printf("%f ", host_baseline_output[i*outw+j]);
-        }
-        printf("\n");
-    }
+    if (check(cpu_output, host_baseline_output, outh*outw)) 
+        printf("baseline correct!\n");
+    else 
+        printf("baseline error!\n");
+    printf("---------------------\n");
     //opt_register
-    cudaEventRecord(start, 0);
-    //for (int i = 0; i < 1000; ++i)
-    opt_register<<<blockPerGrid, threadPerBlock>>>(dev_input, dev_output, dev_k, outh, outw);
-    cudaEventRecord(stop, 0);
-    cudaEventSynchronize(stop);
-    cudaEventElapsedTime(&time, start, stop);
-    printf("opt_register: time = %fms \n", time);
-    cudaMemcpy(host_output, dev_output, outsize, cudaMemcpyDeviceToHost);
-    check(host_baseline_output, host_output, outsize);
-    /*for (int i = 0 ; i < 10 ; ++i) */
-        /*printf("%f ", host_baseline_output[i]);*/
-    /*printf("\n");*/
-    /*for (int i = 0 ; i < 10 ; ++i) */
-        /*printf("%f ", host_output[i]);*/
-    /*printf("\n");*/
+    /*cudaEventRecord(start, 0);*/
+    /*opt_register<<<blockPerGrid, threadPerBlock>>>(dev_input, dev_output, dev_k, outh, outw);*/
+    /*cudaEventRecord(stop, 0);*/
+    /*cudaEventSynchronize(stop);*/
+    /*cudaEventElapsedTime(&time, start, stop);*/
+    /*printf("opt_register: time = %fms \n", time);*/
+    /*cudaMemcpy(host_output, dev_output, outsize, cudaMemcpyDeviceToHost);*/
+    /*check(cpu_output, host_output, outh*outw);*/
+    /*printf("---------------------\n");*/
     //recover dev_output[0] to 0
     host_output[0] = 0;
     cudaMemcpy(dev_output, host_output, outsize, cudaMemcpyHostToDevice);
     //cudnn
     cudaEventRecord(start, 0);
-    //for (int i = 0; i < 1000; ++i)
     checkCUDNNError(cudnnConvolutionForward(cudnnHandle, &alpha, bottom_desc_,
                 (void*)dev_input, filter_desc_, (void*)dev_k,
                 conv_desc_, algo_, workspace, workspaceSizeInBytes, &beta,
@@ -233,7 +226,15 @@ int main() {
     cudaEventElapsedTime(&time, start, stop);
     printf("cudnn: time = %fms \n", time);
     cudaMemcpy(host_output, dev_output, outsize, cudaMemcpyDeviceToHost);
-    check(host_baseline_output, host_output, outsize);
+    check(cpu_output, host_output, outh*outw);
+    printf("cudnn result:\n");
+    for (int i = 0; i < outh; ++i) {
+        for (int j = 0; j < outw; ++j) {
+            printf("%f ", host_output[i*outw+j]);
+        }
+        printf("\n");
+    }
+    printf("---------------------\n");
 
     return 0;
 }
