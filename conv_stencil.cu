@@ -4,18 +4,17 @@
 #include <cublas_v2.h>
 using namespace std;
 #define real float
-#define H 16
-#define W 16
+#define N 1
+#define H 1024
+#define W 1024
 #define S 3
 #define R 3
-#define BX 16
-#define BY 16
+#define BX 32
+#define BY 32
 #define checkCUDNNError(status) \
-    do{ \
     if (status != CUDNN_STATUS_SUCCESS) { \
         printf("CUDA FAILURE: %s\n", cudnnGetErrorString(status)); \
-    } \
-    }while(0)
+    } 
 #define checkCudaError(status) \
     if (status != cudaSuccess) { \
         printf("CUDA FAILURE: %s\n", cudaGetErrorString(status)); \
@@ -140,8 +139,8 @@ bool check(real* A, real* B, int size) {
 }
 int main() {
     setup();
-    int insize = H*W*sizeof(float);
-    int outsize = (H-R+1)*(W-S+1)*sizeof(float);
+    int insize = N*H*W*sizeof(float);
+    int outsize = N*(H-R+1)*(W-S+1)*sizeof(float);
     int ksize = S*R*sizeof(float);
     int outh = H - R + 1;
     int outw = W - S + 1;
@@ -150,17 +149,21 @@ int main() {
     real* host_output = (real*)malloc(outsize);
     real* cpu_output = (real*)malloc(outsize);
     real* host_k = (real*)malloc(ksize);
-    for (int i = 0; i < H; ++i) {
-        for (int j = 0; j < W; ++j) {
-            host_input[i*W+j] = j;
+    for (int n = 0; n < N; ++n) {
+        //n=0,1
+        for (int i = 0; i < H; ++i) {
+            for (int j = 0; j < W; ++j) {
+                host_input[i*W+j+H*W*n] = j;
+            }
+        }
+        for (int i = 0; i < outh; ++i) {
+            for (int j = 0; j < outw; ++j) {
+                host_output[i*outw+j+outh*outw*n] = 0;
+                host_baseline_output[i*outw+j+outh*outw*n] = 0;
+            }
         }
     }
-    for (int i = 0; i < H-R+1; ++i) {
-        for (int j = 0; j < W-S+1; ++j) {
-            host_output[i*(W-S+1)+j] = 0;
-            host_baseline_output[i*(W-S+1)+j] = 0;
-        }
-    }
+    //k
     for (int i = 0; i < R; ++i) {
         for (int j = 0; j < S; ++j) {
             host_k[i*S+j] = i*S+j+1;
@@ -212,11 +215,6 @@ int main() {
     /*cudaMemcpy(host_output, dev_output, outsize, cudaMemcpyDeviceToHost);*/
     /*check(cpu_output, host_output, outh*outw);*/
     /*printf("---------------------\n");*/
-    //recover dev_output[0] to 0
-    for (int i = 0; i < H*W; ++i) {
-        host_output[i] = 0;
-    }
-    cudaMemcpy(dev_output, host_output, outsize, cudaMemcpyHostToDevice);
     //cudnn
     cudaEventRecord(start, 0);
     checkCUDNNError(cudnnConvolutionForward(cudnnHandle, &alpha, bottom_desc_,
