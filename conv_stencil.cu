@@ -4,13 +4,15 @@
 #include <cublas_v2.h>
 using namespace std;
 #define real float
-#define N 1
-#define H 1024
-#define W 1024
-#define S 3
+#define N 2
+#define H 32
+#define W 32
 #define R 3
-#define BX 32
-#define BY 32
+#define S 3
+#define BX 16
+#define BY 16
+#define OH (H-R+1)
+#define OW (W-S+1)
 #define checkCUDNNError(status) \
     if (status != CUDNN_STATUS_SUCCESS) { \
         printf("CUDA FAILURE: %s\n", cudnnGetErrorString(status)); \
@@ -37,10 +39,10 @@ void setup() {
     checkCUDNNError(cudnnCreate(&cudnnHandle));
     checkCUDNNError(cudnnSetTensor4dDescriptor(bottom_desc_,
                     CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT,
-                    1, 1, H, W));
+                    N, 1, H, W));
     checkCUDNNError(cudnnSetTensor4dDescriptor(top_desc_,
                     CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT,
-                    1, 1, H-R+1, W-S+1));
+                    N, 1, H-R+1, W-S+1));
     checkCUDNNError(cudnnSetFilter4dDescriptor(filter_desc_,
                     CUDNN_DATA_FLOAT, 1, 1, R, S));
     checkCUDNNError(cudnnSetConvolution2dDescriptor(conv_desc_,
@@ -58,15 +60,18 @@ void setup() {
 __global__ void baseline(real* input, real* output, real* K, int outh, int outw) {
     int i = threadIdx.x + blockDim.x*blockIdx.x;
     int j = threadIdx.y + blockDim.y*blockIdx.y;
-    float tmp = 0;
+    float tmp;
     //注意边界thread的判断！！！
     if (i < W-S+1 && j < H-R+1) { 
-        for (int a = 0; a < R; ++a) {
-            for (int b = 0; b < S; ++b) {
-                tmp += input[(j+a)*W + (i+b)] * K[(R-1-a)*S + (S-1-b)];
+        for (int n = 0; n < N; ++n) {
+            tmp = 0;
+            for (int a = 0; a < R; ++a) {
+                for (int b = 0; b < S; ++b) {
+                    tmp += input[((j+a)*W+(i+b)) + n*H*W] * K[(R-1-a)*S + (S-1-b)];
+                }
             }
+            output[j*outw+i + n*OH*OW] = tmp;
         }
-        output[j*outw+i] = tmp;
     }
 }
 
@@ -117,20 +122,24 @@ __global__ void opt_shm(real* input, real* output, real* K, int outh, int outw) 
     }
 }
 void cpu_comp(real* input, real* output, real* K, int h, int w, int kr, int ks, int outh, int outw) {
-    for (int i = 0; i < outh; ++i) {
-        for (int j = 0; j < outw; ++j) {
-            real a = 0;
-            for (int r = 0; r < kr; ++r) {
-                for (int s = 0; s < ks; ++s) {
-                    a += input[(i+r)*w + (j+s)] * K[(kr-1-r)*ks+(ks-1-s)];
+    for (int n = 0; n < N; ++n) {
+        for (int i = 0; i < outh; ++i) {
+            for (int j = 0; j < outw; ++j) {
+                real a = 0;
+                for (int r = 0; r < kr; ++r) {
+                    for (int s = 0; s < ks; ++s) {
+                        //a += input[(i+r)*w + (j+s)] * K[(kr-1-r)*ks+(ks-1-s)];
+                        a += input[((i+r)*w+(j+s)) + n*H*W] * K[(kr-1-r)*ks+(ks-1-s)];
+                    }
                 }
+                output[(i*outw+j) + n*OH*OW] = a;
             }
-            output[i*outw + j] = a;
         }
     }
 }
 bool check(real* A, real* B, int size) {
-    for (int i = 0; i < size; ++i)
+    int Nsize = N * size;
+    for (int i = 0; i < Nsize; ++i)
         if (A[i] != B[i]) {
             printf("ERROR at %d: %d %d\n", i, A[i], B[i]);
             return false;
@@ -140,9 +149,9 @@ bool check(real* A, real* B, int size) {
 int main() {
     setup();
     int insize = N*H*W*sizeof(float);
-    int outsize = N*(H-R+1)*(W-S+1)*sizeof(float);
+    int outsize = N*(H-R+1)*(W-S+1)*sizeof(float); // total out size
     int ksize = S*R*sizeof(float);
-    int outh = H - R + 1;
+    int outh = H - R + 1;  //each out size
     int outw = W - S + 1;
     real* host_input = (real*)malloc(insize);
     real* host_baseline_output = (real*)malloc(outsize);
@@ -175,7 +184,7 @@ int main() {
         /*for (int j = 0; j < outw; ++j) {*/
             /*printf("%f ", cpu_output[i*outw+j]);*/
         /*}*/
-        /*printf("\n");*/
+    /*printf("\n");*/
     /*}*/
     printf("start...\n");
     printf("---------------------\n");
