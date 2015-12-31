@@ -4,14 +4,14 @@
 #include <cublas_v2.h>
 using namespace std;
 #define real float
-#define N 3
-#define C 2
-#define H 5
-#define W 5
+#define N 10
+#define C 1
+#define H 1024
+#define W 1024
 #define R 3
 #define S 3
-#define BX 1
-#define BY 1
+#define BX 32
+#define BY 32
 #define OH (H-R+1)
 #define OW (W-S+1)
 #define checkCUDNNError(status) \
