@@ -5,6 +5,7 @@
 
 ## 所要解决的具体问题
 * 在NVIDIA推出的cuDNN库中，进行了包括convolution、pooling、activation、softmax、tensor transformation等layer计算的加速，但是存在的一个问题是每一层的计算都是通过单个API调用来实现的，多层的计算就需要通过多次调用API来实现。如果可以在一个API调用中实现多层的计算，在层与层之间做内部的优化，也许效率还会有上升的空间。
+* 在cuDNN的convolution等layer中，并行计算是通过把input features和kernels展开成冗余矩阵的形式，进而转化成矩阵乘矩阵的运算来实现的。这种方法虽然运算速度快，但是在内存的消耗上却是baseline的几倍。如果本实验的方法可以做到降低内存的消耗，那DNN将可以承载更大的数据和参数，更便于扩展。
 
 ## 相关技术
 * GPU的架构了解
