@@ -1,6 +1,24 @@
 # dl_stencil
 ## 任务背景
+* 随着深度学习网络越来越复杂以及数据规模越来越大，训练过程中的计算量也在急剧增加，面对庞大的数据量，传统的CPU已经无法承载，用GPU进行深度学习训练已经成为必然的趋势。
+* 目前，已经有很多机器学习框架，比如caffe、torch7、theano、mxnet等，这些框架设计好了底层的训练结构，提供给用户方便的训练参数设置和算法设计的接口，但是在底层的GPU加速上却做的有所不足。为此，NVIDIA推出了cuDNN，更好地利用GPU的特性，加速了大多数DNN中layer的计算速度。
+
 ## 所要解决的具体问题
+* 在NVIDIA推出的cuDNN库中，进行了包括convolution、pooling、activation、softmax、tensor transformation等layer计算的加速，但是存在的一个问题是每一层的计算都是通过单个API调用来实现的，多层的计算就需要通过多次调用API来实现。如果可以在一个API调用中实现多层的计算，在层与层之间做内部的优化，也许效率还会有上升的空间。
+
 ## 相关技术
+* GPU的架构了解
+* cuda编程方法
+* 深度学习训练过程(forward、backward)
+* layer的计算方法以及优化方法
+
 ## 任务目标
+* 保证计算结果正确性的前提下，在GPU上对DNN做层与层之间的计算优化
+* 复现某一个深度学习网络，将本文的方法与cuDNN的单层调用的方法做对比
+
 ## 工作计划
+* 1～2周：完成DNN的convoluiton/pooling/softmax的GPU baseline
+* 3～5周：深入调研GPU的优化方法(shared memory、register、warp...)，对baseline进行一系列优化，并与cuDNN的单层调用做对比
+* 6～9周：在层与层之间做优化，并与多层的cuDNN调用在时间效率和内存效率上多对比
+* 10～14周：复现某一个深度学习网络，将本文的方法用于实际的深度学习训练过程中，与cuDNN做对比
+* 15～16周：撰写论文、后期答辩
